@@ -1,3 +1,24 @@
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-*-x86_64"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+
+  filter {
+    name   = "root-device-type"
+    values = ["ebs"]
+  }
+}
+
+
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_support   = true
@@ -92,6 +113,40 @@ resource "aws_security_group" "web" {
 
   tags = {
     Name        = "ssl-auto-renewal-web-sg"
+    Environment = "dev"
+    Project     = "ssl-auto-renewal"
+  }
+}
+
+resource "aws_instance" "web" {
+  ami           = data.aws_ami.amazon_linux.id
+  instance_type = "t3.micro"
+
+  subnet_id                   = aws_subnet.public.id
+  vpc_security_group_ids      = [aws_security_group.web.id]
+  associate_public_ip_address = true
+
+  user_data = <<-EOF
+              #!/bin/bash
+
+              dnf update -y
+
+              dnf install -y docker
+
+              systemctl enable docker
+              systemctl start docker
+
+              usermod -aG docker ec2-user
+
+              docker run -d \
+                --name nginx \
+                --restart unless-stopped \
+                -p 80:80 \
+                nginx:alpine
+              EOF
+
+  tags = {
+    Name        = "ssl-auto-renewal-web"
     Environment = "dev"
     Project     = "ssl-auto-renewal"
   }

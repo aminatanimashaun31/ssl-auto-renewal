@@ -125,6 +125,7 @@ resource "aws_instance" "web" {
   subnet_id                   = aws_subnet.public.id
   vpc_security_group_ids      = [aws_security_group.web.id]
   associate_public_ip_address = true
+  iam_instance_profile        = aws_iam_instance_profile.ec2.name
 
   user_data = <<-EOF
               #!/bin/bash
@@ -150,4 +151,55 @@ resource "aws_instance" "web" {
     Environment = "dev"
     Project     = "ssl-auto-renewal"
   }
+}
+
+resource "aws_ecr_repository" "app" {
+  name                 = "ssl-auto-renewal"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = {
+    Name        = "ssl-auto-renewal"
+    Environment = "dev"
+    Project     = "ssl-auto-renewal"
+  }
+}
+
+resource "aws_iam_role" "ec2" {
+  name = "ssl-auto-renewal-ec2-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Effect = "Allow"
+
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "ssl-auto-renewal-ec2-role"
+    Environment = "dev"
+    Project     = "ssl-auto-renewal"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "ecr_read" {
+  role       = aws_iam_role.ec2.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+resource "aws_iam_instance_profile" "ec2" {
+  name = "ssl-auto-renewal-ec2-profile"
+  role = aws_iam_role.ec2.name
 }
